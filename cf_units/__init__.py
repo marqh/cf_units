@@ -38,8 +38,8 @@ import os.path
 import sys
 import warnings
 
-import netcdftime
 import numpy as np
+import terra
 
 from . import config
 from .util import _OrderedHashable, approx_equal
@@ -589,8 +589,8 @@ def julian_day2date(julian_day, calendar):
         datetime.datetime(1970, 1, 1, 0, 0)
 
     """
-
-    return netcdftime.DateFromJulianDay(julian_day, calendar)
+    return None
+    # return netcdftime.DateFromJulianDay(julian_day, calendar)
 
 
 def date2julian_day(date, calendar):
@@ -627,8 +627,8 @@ def date2julian_day(date, calendar):
         2440587.5
 
     """
-
-    return netcdftime.JulianDayFromDate(date, calendar)
+    return None
+    # return netcdftime.JulianDayFromDate(date, calendar)
 
 
 def date2num(date, unit, calendar):
@@ -685,9 +685,10 @@ def date2num(date, unit, calendar):
     unit_string = unit.rstrip(" UTC")
     if unit_string.endswith(" since epoch"):
         unit_string = unit_string.replace("epoch", EPOCH)
-    cdftime = netcdftime.utime(unit_string, calendar=calendar)
+    # cdftime = netcdftime.utime(unit_string, calendar=calendar)
     date = _discard_microsecond(date)
-    return cdftime.date2num(date)
+    # return cdftime.date2num(date)
+    return None
 
 
 def _discard_microsecond(date):
@@ -785,8 +786,9 @@ def num2date(time_value, unit, calendar):
     unit_string = unit.rstrip(" UTC")
     if unit_string.endswith(" since epoch"):
         unit_string = unit_string.replace("epoch", EPOCH)
-    cdftime = netcdftime.utime(unit_string, calendar=calendar)
-    return _num2date_to_nearest_second(time_value, cdftime)
+    # cdftime = netcdftime.utime(unit_string, calendar=calendar)
+    # return _num2date_to_nearest_second(time_value, cdftime)
+    return None
 
 
 def _num2date_to_nearest_second(time_value, utime):
@@ -1992,11 +1994,20 @@ class Unit(_OrderedHashable):
         if self.is_convertible(other):
             # Use utime for converting reference times that are not using a
             # gregorian calendar as it handles these and udunits does not.
-            if self.is_time_reference() \
-                    and self.calendar != CALENDAR_GREGORIAN:
+            if self.is_time_reference():# \
+                    # and self.calendar != CALENDAR_GREGORIAN:
                 ut1 = self.utime()
                 ut2 = other.utime()
-                result = ut2.date2num(ut1.num2date(result))
+
+                ustr = str(self).split(' since ')[0]
+                epoch_datetimes = terra.datetime.EpochDateTimes(result, ustr, ut1)
+                # result_edt =
+                # This is the same calculation at the heart as #2145
+                import pdb; pdb.set_trace()
+                # print(epoch_datetimes)
+                # import pdb; pdb.set_trace()
+                # result = ut2.date2num(ut1.num2date(result))
+                
                 # Preserve the datatype of the input array if it was float32.
                 if (isinstance(value, np.ndarray) and
                    value.dtype == np.float32):
@@ -2076,7 +2087,21 @@ class Unit(_OrderedHashable):
         #
         if self.calendar is None:
             raise ValueError('Unit has undefined calendar')
-        return netcdftime.utime(str(self).rstrip(" UTC"), self.calendar)
+        # return netcdftime.utime(str(self).rstrip(" UTC"), self.calendar)
+        # return None
+        if self.calendar in ['gregorian', 'standard']:
+            calendar = terra.datetime.GregorianNoLeapSecond()
+        elif self.calendar == '360_day':
+            calendar = terra.datetime.G360Day()
+        else:
+            raise ValueError('{} not a recognised calendar string.'.format(self.calendar))
+        if str(self).startswith('hours since'):
+            datetime = str(self).rstrip(" UTC").lstrip('hours since ')
+        elif str(self).startswith('seconds since'):
+            datetime = str(self).rstrip(" UTC").lstrip('seconds since ')
+        else:
+            raise ValueError('Cannot return a timestamp from {}'.format(str(self)))
+        return terra.datetime.parse_datetime(datetime, calendar)
 
     def date2num(self, date):
         """
@@ -2113,9 +2138,24 @@ class Unit(_OrderedHashable):
 
         """
 
-        cdf_utime = self.utime()
+        # cdf_utime = self.utime()
+        utime = self.utime()
         date = _discard_microsecond(date)
-        return cdf_utime.date2num(date)
+        dates = terra.datetime.convert_datetimes(date)
+        # this line is the heart of the matter (#2005).  How do we manage
+        # this calculation carefully?
+        result = np.array([(dates - utime).total_seconds() / 3600])
+        
+        # return cdf_utime.date2num(date)
+
+        # ustr = str(self).split(' since ')[0]
+        # epoch_datetimes = terra.datetime.EpochDateTimes(time_values, ustr,
+        #                                                 utime)
+        # offsets = epoch_datetimes.offsets.offsets
+        # result = offsets
+        # if len(offsets) == 1:
+        #     result = offsets[0]
+        return result
 
     def num2date(self, time_value):
         """
@@ -2126,12 +2166,7 @@ class Unit(_OrderedHashable):
         '<time-unit> since <time-origin>'
         i.e. 'hours since 1970-01-01 00:00:00'
 
-        The datetime objects returned are 'real' Python datetime objects
-        if the date falls in the Gregorian calendar (i.e. the calendar
-        is 'standard', 'gregorian', or 'proleptic_gregorian' and the
-        date is after 1582-10-15). Otherwise a 'phoney' datetime-like
-        object (netcdftime.datetime) is returned which can handle dates
-        that don't exist in the Proleptic Gregorian calendar.
+        The datetime objects returned are terra datetime objects.
 
         Works for scalars, sequences and numpy arrays. Returns a scalar
         if input is a scalar, else returns a numpy array.
@@ -2156,5 +2191,11 @@ class Unit(_OrderedHashable):
                    datetime.datetime(1970, 1, 1, 7, 0)], dtype=object)
 
         """
-        cdf_utime = self.utime()
-        return _num2date_to_nearest_second(time_value, cdf_utime)
+        ustr = str(self).split(' since ')[0]
+        epoch_datetimes = terra.datetime.EpochDateTimes(time_value, ustr,
+                                                        self.utime())
+        datetimes = epoch_datetimes.datetimes()
+        result = datetimes
+        if len(datetimes) == 1:
+            result = datetimes[0]
+        return result
