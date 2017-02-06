@@ -786,20 +786,20 @@ def num2date(time_value, unit, calendar):
     unit_string = unit.rstrip(" UTC")
     if unit_string.endswith(" since epoch"):
         unit_string = unit_string.replace("epoch", EPOCH)
-    # cdftime = netcdftime.utime(unit_string, calendar=calendar)
-    # return _num2date_to_nearest_second(time_value, cdftime)
-    return None
+    tunit = Unit(unit_string, calendar=calendar)
+    # utime = Unit(unit_string, calendar=calendar).utime()
+    return _num2date_to_nearest_second(time_value, tunit)  # utime, unit_string)
 
 
-def _num2date_to_nearest_second(time_value, utime):
+def _num2date_to_nearest_second(time_value, tunit):
     """
     Return datetime encoding of numeric time value with respect to the given
     time reference units, with a resolution of 1 second.
 
     * time_value (float):
         Numeric time value/s.
-    * utime (netcdftime.utime):
-        netcdf.utime object with which to perform the conversion/s.
+    * utime (terra.datetime.datetime):
+        terra.datetime.datetime object, the timedatum.
 
     Returns:
         datetime, or numpy.ndarray of datetime object.
@@ -817,12 +817,15 @@ def _num2date_to_nearest_second(time_value, utime):
     # those versions, a half-second value would be rounded up or down
     # arbitrarily. It is probably not possible to replicate that behaviour with
     # later versions, if one wished to do so for the sake of consistency.
-    has_half_seconds = np.logical_and(utime.units == 'seconds',
+    has_half_seconds = np.logical_and(tunit == 'seconds',
                                       time_values % 1. == 0.5)
-    dates = utime.num2date(time_values)
+    # dates = utime.num2date(time_values)
+    ustr = str(tunit).split(' since ')[0]
+    dates = terra.datetime.EpochDateTimes(time_value, ustr, tunit.utime())
+    # see 2006
     try:
         # We can assume all or none of the dates have a microsecond attribute
-        microseconds = np.array([d.microsecond if d else 0 for d in dates])
+        microseconds = np.array([d.microsecond if d else 0 for d in dates.datetimes()])
     except AttributeError:
         microseconds = 0
     round_mask = np.logical_or(has_half_seconds, microseconds != 0)
@@ -831,8 +834,9 @@ def _num2date_to_nearest_second(time_value, utime):
         useconds = Unit('second')
         second_frac = useconds.convert(0.75, utime.units)
         dates[ceil_mask] = utime.num2date(time_values[ceil_mask] + second_frac)
-    dates[round_mask] = _discard_microsecond(dates[round_mask])
-    result = dates[0] if shape is () else dates.reshape(shape)
+    #import pdb; pdb.set_trace()
+    #dates[round_mask] = _discard_microsecond(dates[round_mask])
+    result = dates.datetimes()[0] if shape is () else dates.datetimes().reshape(shape)
     return result
 
 
@@ -2059,25 +2063,7 @@ class Unit(_OrderedHashable):
 
     def utime(self):
         """
-        Returns a netcdftime.utime object which performs conversions of
-        numeric time values to/from datetime objects given the current
-        calendar and unit time reference.
-
-        The current unit time reference must be of the form:
-        '<time-unit> since <time-origin>'
-        i.e. 'hours since 1970-01-01 00:00:00'
-
-        Returns:
-            netcdftime.utime.
-
-        For example:
-
-            >>> import cf_units
-            >>> u = cf_units.Unit('hours since 1970-01-01 00:00:00',
-            ...                   calendar=cf_units.CALENDAR_STANDARD)
-            >>> ut = u.utime()
-            >>> ut.num2date(2)
-            datetime.datetime(1970, 1, 1, 2, 0)
+        Returns a terra.datetime.datetime object if the unit has a calendar.
 
         """
 
@@ -2093,10 +2079,16 @@ class Unit(_OrderedHashable):
             calendar = terra.datetime.GregorianNoLeapSecond()
         elif self.calendar == '360_day':
             calendar = terra.datetime.G360Day()
+        elif self.calendar == '365_day':
+            calendar = terra.datetime.G365Day()
         else:
             raise ValueError('{} not a recognised calendar string.'.format(self.calendar))
-        if str(self).startswith('hours since'):
+        if str(self).startswith('days since'):
+            datetime = str(self).rstrip(" UTC").lstrip('days since ')
+        elif str(self).startswith('hours since'):
             datetime = str(self).rstrip(" UTC").lstrip('hours since ')
+        elif str(self).startswith('minutes since'):
+            datetime = str(self).rstrip(" UTC").lstrip('minutes since ')
         elif str(self).startswith('seconds since'):
             datetime = str(self).rstrip(" UTC").lstrip('seconds since ')
         else:

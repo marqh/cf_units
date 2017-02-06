@@ -24,56 +24,60 @@ import datetime
 
 import numpy as np
 import numpy.testing
-import netcdftime
+import terra.datetime
 
 from cf_units import _num2date_to_nearest_second, Unit
 
 
 class Test(unittest.TestCase):
     def setup_units(self, calendar):
-        self.useconds = netcdftime.utime('seconds since 1970-01-01',  calendar)
-        self.uminutes = netcdftime.utime('minutes since 1970-01-01', calendar)
-        self.uhours = netcdftime.utime('hours since 1970-01-01', calendar)
-        self.udays = netcdftime.utime('days since 1970-01-01', calendar)
+        self.useconds = Unit('seconds since 1970-01-01',  calendar)
+        self.uminutes = Unit('minutes since 1970-01-01', calendar)
+        self.uhours = Unit('hours since 1970-01-01', calendar)
+        self.udays = Unit('days since 1970-01-01', calendar)
 
     def check_dates(self, nums, utimes, expected):
-        for num, utime, exp in zip(nums, utimes, expected):
-            res = _num2date_to_nearest_second(num, utime)
-            self.assertEqual(exp, res)
+        res = np.array([_num2date_to_nearest_second(num, utime)
+                        for num, utime in zip(nums, utimes)])
+        numpy.testing.assert_array_equal(expected, res)
 
     def test_scalar(self):
-        utime = netcdftime.utime('seconds since 1970-01-01',  'gregorian')
+        utime = Unit('seconds since 1970-01-01',  'gregorian')
         num = 5.
-        exp = datetime.datetime(1970, 1, 1, 0, 0, 5)
+        acal = terra.datetime.GregorianNoLeapSecond()
+        exp = terra.datetime.datetime(1970, 1, 1, 0, 0, 5,
+                                      calendar=acal)
         res = _num2date_to_nearest_second(num, utime)
         self.assertEqual(exp, res)
 
     def test_sequence(self):
-        utime = netcdftime.utime('seconds since 1970-01-01',  'gregorian')
+        tunit = Unit('seconds since 1970-01-01',  'gregorian')
         nums = [20., 40., 60., 80, 100.]
-        exp = [datetime.datetime(1970, 1, 1, 0, 0, 20),
-               datetime.datetime(1970, 1, 1, 0, 0, 40),
-               datetime.datetime(1970, 1, 1, 0, 1),
-               datetime.datetime(1970, 1, 1, 0, 1, 20),
-               datetime.datetime(1970, 1, 1, 0, 1, 40)]
-        res = _num2date_to_nearest_second(nums, utime)
+        acal = terra.datetime.GregorianNoLeapSecond()
+        exp = [terra.datetime.datetime(1970, 1, 1, 0, 0, 20, calendar=acal),
+               terra.datetime.datetime(1970, 1, 1, 0, 0, 40, calendar=acal),
+               terra.datetime.datetime(1970, 1, 1, 0, 1, calendar=acal),
+               terra.datetime.datetime(1970, 1, 1, 0, 1, 20, calendar=acal),
+               terra.datetime.datetime(1970, 1, 1, 0, 1, 40, calendar=acal)]
+        res = _num2date_to_nearest_second(nums, tunit)
         np.testing.assert_array_equal(exp, res)
 
     def test_multidim_sequence(self):
-        utime = netcdftime.utime('seconds since 1970-01-01',  'gregorian')
+        tunit = Unit('seconds since 1970-01-01',  'gregorian')
         nums = [[20., 40., 60.],
                 [80, 100., 120.]]
         exp_shape = (2, 3)
-        res = _num2date_to_nearest_second(nums, utime)
+        res = _num2date_to_nearest_second(nums, tunit)
         self.assertEqual(exp_shape, res.shape)
 
     def test_masked_ndarray(self):
-        utime = netcdftime.utime('seconds since 1970-01-01',  'gregorian')
+        tunit = Unit('seconds since 1970-01-01',  'gregorian')
         nums = np.ma.masked_array([20., 40., 60.], [False, True, False])
-        exp = [datetime.datetime(1970, 1, 1, 0, 0, 20),
+        acal = terra.datetime.GregorianNoLeapSecond()
+        exp = [terra.datetime.datetime(1970, 1, 1, 0, 0, 20, calendar=acal),
                None,
-               datetime.datetime(1970, 1, 1, 0, 1)]
-        res = _num2date_to_nearest_second(nums, utime)
+               terra.datetime.datetime(1970, 1, 1, 0, 1, calendar=acal)]
+        res = _num2date_to_nearest_second(nums, tunit)
         np.testing.assert_array_equal(exp, res)
 
     # Gregorian Calendar tests
@@ -88,15 +92,15 @@ class Test(unittest.TestCase):
                   self.uminutes, self.uminutes,
                   self.uhours, self.uhours,
                   self.udays, self.udays]
-        expected = [datetime.datetime(1970, 1, 1, 0, 0, 20),
-                    datetime.datetime(1970, 1, 1, 0, 0, 40),
-                    datetime.datetime(1970, 1, 1, 1, 15),
-                    datetime.datetime(1970, 1, 1, 2, 30),
-                    datetime.datetime(1970, 1, 1, 8),
-                    datetime.datetime(1970, 1, 1, 16),
-                    datetime.datetime(1970, 10, 28),
-                    datetime.datetime(1971, 8, 24)]
-
+        acal = terra.datetime.GregorianNoLeapSecond()
+        expected = [terra.datetime.datetime(1970, 1, 1, 0, 0, 20, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 40, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 1, 15, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 2, 30, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 8, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 16, calendar=acal),
+                    terra.datetime.datetime(1970, 10, 28, calendar=acal),
+                    terra.datetime.datetime(1971, 8, 24, calendar=acal)]
         self.check_dates(nums, utimes, expected)
 
     def test_fractional_gregorian(self):
@@ -107,12 +111,13 @@ class Test(unittest.TestCase):
         utimes = [self.uminutes, self.uminutes,
                   self.uhours, self.uhours,
                   self.udays, self.udays]
-        expected = [datetime.datetime(1970, 1, 1, 0, 0, 5),
-                    datetime.datetime(1970, 1, 1, 0, 0, 10),
-                    datetime.datetime(1970, 1, 1, 0, 15),
-                    datetime.datetime(1970, 1, 1, 0, 30),
-                    datetime.datetime(1970, 1, 1, 8),
-                    datetime.datetime(1970, 1, 1, 16)]
+        acal = terra.datetime.GregorianNoLeapSecond()
+        expected = [terra.datetime.datetime(1970, 1, 1, 0, 0, 5, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 10, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 15, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 30, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 8, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 16, calendar=acal)]
 
         self.check_dates(nums, utimes, expected)
 
@@ -121,13 +126,14 @@ class Test(unittest.TestCase):
         nums = [0.25, 0.5, 0.75,
                 1.5, 2.5, 3.5, 4.5]
         utimes = [self.useconds] * 7
-        expected = [datetime.datetime(1970, 1, 1, 0, 0, 0),
-                    datetime.datetime(1970, 1, 1, 0, 0, 1),
-                    datetime.datetime(1970, 1, 1, 0, 0, 1),
-                    datetime.datetime(1970, 1, 1, 0, 0, 2),
-                    datetime.datetime(1970, 1, 1, 0, 0, 3),
-                    datetime.datetime(1970, 1, 1, 0, 0, 4),
-                    datetime.datetime(1970, 1, 1, 0, 0, 5)]
+        acal = terra.datetime.GregorianNoLeapSecond()
+        expected = [terra.datetime.datetime(1970, 1, 1, 0, 0, 0, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 1, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 1, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 2, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 3, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 4, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 5, calendar=acal)]
 
         self.check_dates(nums, utimes, expected)
 
@@ -143,14 +149,15 @@ class Test(unittest.TestCase):
                   self.uminutes, self.uminutes,
                   self.uhours, self.uhours,
                   self.udays, self.udays]
-        expected = [netcdftime.datetime(1970, 1, 1, 0, 0, 20),
-                    netcdftime.datetime(1970, 1, 1, 0, 0, 40),
-                    netcdftime.datetime(1970, 1, 1, 1, 15),
-                    netcdftime.datetime(1970, 1, 1, 2, 30),
-                    netcdftime.datetime(1970, 1, 1, 8),
-                    netcdftime.datetime(1970, 1, 1, 16),
-                    netcdftime.datetime(1970, 11, 1),
-                    netcdftime.datetime(1971, 9, 1)]
+        acal = terra.datetime.G360Day()
+        expected = [terra.datetime.datetime(1970, 1, 1, 0, 0, 20, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 40, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 1, 15, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 2, 30, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 8, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 16, calendar=acal),
+                    terra.datetime.datetime(1970, 11, 1, calendar=acal),
+                    terra.datetime.datetime(1971, 9, 1, calendar=acal)]
 
         self.check_dates(nums, utimes, expected)
 
@@ -162,12 +169,13 @@ class Test(unittest.TestCase):
         utimes = [self.uminutes, self.uminutes,
                   self.uhours, self.uhours,
                   self.udays, self.udays]
-        expected = [netcdftime.datetime(1970, 1, 1, 0, 0, 5),
-                    netcdftime.datetime(1970, 1, 1, 0, 0, 10),
-                    netcdftime.datetime(1970, 1, 1, 0, 15),
-                    netcdftime.datetime(1970, 1, 1, 0, 30),
-                    netcdftime.datetime(1970, 1, 1, 8),
-                    netcdftime.datetime(1970, 1, 1, 16)]
+        acal = terra.datetime.G360Day()
+        expected = [terra.datetime.datetime(1970, 1, 1, 0, 0, 5, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 10, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 15, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 30, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 8, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 16, calendar=acal)]
 
         self.check_dates(nums, utimes, expected)
 
@@ -176,13 +184,14 @@ class Test(unittest.TestCase):
         nums = [0.25, 0.5, 0.75,
                 1.5, 2.5, 3.5, 4.5]
         utimes = [self.useconds] * 7
-        expected = [netcdftime.datetime(1970, 1, 1, 0, 0, 0),
-                    netcdftime.datetime(1970, 1, 1, 0, 0, 1),
-                    netcdftime.datetime(1970, 1, 1, 0, 0, 1),
-                    netcdftime.datetime(1970, 1, 1, 0, 0, 2),
-                    netcdftime.datetime(1970, 1, 1, 0, 0, 3),
-                    netcdftime.datetime(1970, 1, 1, 0, 0, 4),
-                    netcdftime.datetime(1970, 1, 1, 0, 0, 5)]
+        acal = terra.datetime.G360Day()
+        expected = [terra.datetime.datetime(1970, 1, 1, 0, 0, 0, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 1, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 1, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 2, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 3, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 4, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 5, calendar=acal)]
 
         self.check_dates(nums, utimes, expected)
 
@@ -198,14 +207,15 @@ class Test(unittest.TestCase):
                   self.uminutes, self.uminutes,
                   self.uhours, self.uhours,
                   self.udays, self.udays]
-        expected = [netcdftime.datetime(1970, 1, 1, 0, 0, 20),
-                    netcdftime.datetime(1970, 1, 1, 0, 0, 40),
-                    netcdftime.datetime(1970, 1, 1, 1, 15),
-                    netcdftime.datetime(1970, 1, 1, 2, 30),
-                    netcdftime.datetime(1970, 1, 1, 8),
-                    netcdftime.datetime(1970, 1, 1, 16),
-                    netcdftime.datetime(1970, 10, 28),
-                    netcdftime.datetime(1971, 8, 24)]
+        acal = terra.datetime.G365Day()
+        expected = [terra.datetime.datetime(1970, 1, 1, 0, 0, 20, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 40, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 1, 15, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 2, 30, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 8, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 16, calendar=acal),
+                    terra.datetime.datetime(1970, 10, 28, calendar=acal),
+                    terra.datetime.datetime(1971, 8, 24, calendar=acal)]
 
         self.check_dates(nums, utimes, expected)
 
@@ -217,13 +227,13 @@ class Test(unittest.TestCase):
         utimes = [self.uminutes, self.uminutes,
                   self.uhours, self.uhours,
                   self.udays, self.udays]
-
-        expected = [netcdftime.datetime(1970, 1, 1, 0, 0, 5),
-                    netcdftime.datetime(1970, 1, 1, 0, 0, 10),
-                    netcdftime.datetime(1970, 1, 1, 0, 15),
-                    netcdftime.datetime(1970, 1, 1, 0, 30),
-                    netcdftime.datetime(1970, 1, 1, 8),
-                    netcdftime.datetime(1970, 1, 1, 16)]
+        acal = terra.datetime.G365Day()
+        expected = [terra.datetime.datetime(1970, 1, 1, 0, 0, 5, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 10, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 15, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 30, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 8, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 16, calendar=acal)]
 
         self.check_dates(nums, utimes, expected)
 
@@ -232,13 +242,14 @@ class Test(unittest.TestCase):
         nums = [0.25, 0.5, 0.75,
                 1.5, 2.5, 3.5, 4.5]
         utimes = [self.useconds] * 7
-        expected = [netcdftime.datetime(1970, 1, 1, 0, 0, 0),
-                    netcdftime.datetime(1970, 1, 1, 0, 0, 1),
-                    netcdftime.datetime(1970, 1, 1, 0, 0, 1),
-                    netcdftime.datetime(1970, 1, 1, 0, 0, 2),
-                    netcdftime.datetime(1970, 1, 1, 0, 0, 3),
-                    netcdftime.datetime(1970, 1, 1, 0, 0, 4),
-                    netcdftime.datetime(1970, 1, 1, 0, 0, 5)]
+        acal = terra.datetime.G365Day()
+        expected = [terra.datetime.datetime(1970, 1, 1, 0, 0, 0, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 1, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 1, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 2, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 3, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 4, calendar=acal),
+                    terra.datetime.datetime(1970, 1, 1, 0, 0, 5, calendar=acal)]
 
         self.check_dates(nums, utimes, expected)
 
